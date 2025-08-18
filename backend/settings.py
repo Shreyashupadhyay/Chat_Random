@@ -92,11 +92,6 @@ TEMPLATES = [
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels.layers.InMemoryChannelLayer"
-    } if 'RENDER' not in os.environ else {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [os.environ.get('REDIS_URL', 'redis://localhost:6379')]
-        }
     }
 }
 
