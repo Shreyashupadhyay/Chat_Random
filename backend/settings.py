@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -20,12 +21,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-8z0@5s9r@dz-oeymm)nm@ee%e78i-dr54@jpn$h3*lz7$s)(dw'
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-8z0@5s9r@dz-oeymm)nm@ee%e78i-dr54@jpn$h3*lz7$s)(dw')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = 'RENDER' not in os.environ
 
-ALLOWED_HOSTS = ['.onrender.com', 'localhost']
+ALLOWED_HOSTS = ['.onrender.com', 'localhost', '127.0.0.1']
+
+# Add render.com to allowed hosts
+if 'RENDER' in os.environ:
+    ALLOWED_HOSTS.append('*.onrender.com')
 
 
 # Application definition
@@ -85,13 +90,14 @@ TEMPLATES = [
 
 # Redis for channels
 CHANNEL_LAYERS = {
-      "default": {
+    "default": {
         "BACKEND": "channels.layers.InMemoryChannelLayer"
-    },
-    # "default": {
-    #     "BACKEND": "channels_redis.core.RedisChannelLayer",
-    #     "CONFIG": {"hosts": [("127.0.0.1", 6379)]},
-    # },
+    } if 'RENDER' not in os.environ else {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [os.environ.get('REDIS_URL', 'redis://localhost:6379')]
+        }
+    }
 }
 
 WSGI_APPLICATION = 'backend.wsgi.application'

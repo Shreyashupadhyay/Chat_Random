@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: stranger-chat-backend
+    env: python
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn backend.asgi:application -k uvicorn.workers.UvicornWorker"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: DJANGO_SETTINGS_MODULE
+        value: backend.settings
+      - key: SECRET_KEY
+        generateValue: true
+      - key: WEB_CONCURRENCY
+        value: 4
