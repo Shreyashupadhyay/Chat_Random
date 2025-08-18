@@ -3,7 +3,7 @@ services:
     name: stranger-chat-backend
     env: python
     buildCommand: "./build.sh"
-    startCommand: "gunicorn backend.asgi:application -k uvicorn.workers.UvicornWorker"
+    startCommand: "daphne backend.asgi:application -b 0.0.0.0 -p $PORT"
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0

@@ -37,7 +37,7 @@ git push origin main
    - **Name**: `stranger-chat-backend`
    - **Environment**: `Python 3`
    - **Build Command**: `./build.sh`
-   - **Start Command**: `gunicorn backend.asgi:application -k uvicorn.workers.UvicornWorker`
+       - **Start Command**: `daphne backend.asgi:application -b 0.0.0.0 -p $PORT`
    - **Plan**: Free (for testing)
 
 ### Step 3: Environment Variables

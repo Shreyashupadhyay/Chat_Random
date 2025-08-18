@@ -125,7 +125,7 @@ flutter run
    - **Name**: `stranger-chat-backend` (or any name you prefer)
    - **Environment**: `Python 3`
    - **Build Command**: `./build.sh`
-   - **Start Command**: `gunicorn backend.asgi:application -k uvicorn.workers.UvicornWorker`
+   - **Start Command**: `daphne backend.asgi:application -b 0.0.0.0 -p $PORT`
    - **Plan**: Choose "Free" for testing (upgrades available)
 
 5. **Environment Variables** (optional, Render will auto-generate SECRET_KEY):
