@@ -9,7 +9,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         global waiting_user
 
-        self.user_id = self.scope["client"][1]  # just use socket info (later use auth)
+        # Use channel_name as a per-connection unique identifier (stable behind proxies)
+        self.user_id = self.channel_name
         self.room_name = None
 
         # Matchmaking
