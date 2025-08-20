@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chat Admin Dashboard</title>
+    <style>
+        body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 20px; }
+        .grid { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; }
+        .card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; }
+        .stats { display: flex; gap: 12px; }
+        .badge { background: #f4f4f4; padding: 6px 10px; border-radius: 999px; }
+        ul { padding-left: 18px; }
+        li { margin: 6px 0; }
+        #messages { height: 320px; overflow: auto; border: 1px solid #eee; padding: 8px; }
+        #input { display: flex; gap: 8px; margin-top: 8px; }
+    </style>
+    {% csrf_token %}
+    <script>
+        let adminSocket = null;
+        let selectedRoomId = null;
+
+        async function fetchSummary() {
+            const res = await fetch("/staff/chat/summary/");
+            const data = await res.json();
+            document.getElementById("totalRooms").textContent = data.total_rooms;
+            document.getElementById("activeRooms").textContent = data.active_rooms;
+            document.getElementById("waitingCount").textContent = data.waiting_count;
+            renderRoomLists(data);
+        }
+
+        function renderRoomLists(data) {
+            const activeList = document.getElementById("activeList");
+            const waitingList = document.getElementById("waitingList");
+            activeList.innerHTML = "";
+            waitingList.innerHTML = "";
+            (data.recent_active || []).forEach(r => {
+                const li = document.createElement("li");
+                const title = `${r.room_id} — active`;
+                li.innerHTML = `<button onclick=\"selectRoom('${r.room_id}')\">Open</button> ${title}`;
+                activeList.appendChild(li);
+            });
+            (data.recent_waiting || []).forEach(r => {
+                const li = document.createElement("li");
+                const title = `${r.room_id} — waiting`;
+                li.innerHTML = `<button onclick=\"selectRoom('${r.room_id}')\">Open</button> ${title}`;
+                waitingList.appendChild(li);
+            });
+        }
+
+        function connectAdminSocket() {
+            const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            adminSocket = new WebSocket(`${scheme}://${window.location.host}/ws/admin/`);
+            adminSocket.onopen = () => console.log('Admin socket connected');
+            adminSocket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'history') {
+                    renderMessages(data.messages);
+                } else if (data.message) {
+                    appendMessage(data.message);
+                } else if (data.status) {
+                    console.log('Status:', data.status);
+                }
+            };
+            adminSocket.onclose = () => console.log('Admin socket disconnected');
+        }
+
+        function selectRoom(roomId) {
+            selectedRoomId = roomId;
+            document.getElementById('currentRoom').textContent = roomId;
+            adminSocket.send(JSON.stringify({ action: 'subscribe_room', room_id: roomId }));
+            fetch(`/staff/chat/rooms/${roomId}/messages/`).then(r => r.json()).then(data => {
+                renderMessages(data.messages || []);
+            });
+        }
+
+        function renderMessages(messages) {
+            const box = document.getElementById('messages');
+            box.innerHTML = '';
+            messages.forEach(m => appendMessage(`${m.timestamp} — ${m.sender}: ${m.content}`));
+        }
+
+        function appendMessage(text) {
+            const box = document.getElementById('messages');
+            const div = document.createElement('div');
+            div.textContent = text;
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('msgInput');
+            const text = input.value.trim();
+            if (!text || !selectedRoomId) return;
+            adminSocket.send(JSON.stringify({ action: 'message', message: text }));
+            input.value = '';
+        }
+
+        function killSession() {
+            if (!selectedRoomId) return;
+            if (!confirm('Kill this session?')) return;
+            adminSocket.send(JSON.stringify({ action: 'kill_room', room_id: selectedRoomId }));
+        }
+
+        function deleteRoom() {
+            if (!selectedRoomId) return;
+            if (!confirm('Delete this room permanently? This removes history.')) return;
+            adminSocket.send(JSON.stringify({ action: 'delete_room', room_id: selectedRoomId }));
+            // Clear view and refresh lists after a small delay
+            setTimeout(() => { fetchSummary(); }, 500);
+        }
+
+        function deleteAllRooms() {
+            if (!confirm('Delete ALL rooms and messages? This cannot be undone.')) return;
+            adminSocket.send(JSON.stringify({ action: 'delete_all' }));
+            selectedRoomId = null;
+            document.getElementById('currentRoom').textContent = '(none)';
+            document.getElementById('messages').innerHTML = '';
+            setTimeout(() => { fetchSummary(); }, 800);
+        }
+
+        window.addEventListener('load', () => {
+            connectAdminSocket();
+            fetchSummary();
+            setInterval(fetchSummary, 5000);
+        });
+    </script>
+  </head>
+  <body>
+    <h1>Chat Admin</h1>
+    <div class="stats">
+        <div class="badge">Total: <strong id="totalRooms">0</strong></div>
+        <div class="badge">Active: <strong id="activeRooms">0</strong></div>
+        <div class="badge">Waiting: <strong id="waitingCount">0</strong></div>
+    </div>
+
+    <div class="grid" style="margin-top: 16px;">
+        <div class="card">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                <h3>Rooms</h3>
+                <button onclick="deleteAllRooms()" style="background:#343a40;color:#fff;border:none;padding:6px 10px;border-radius:6px;">Delete All</button>
+            </div>
+            <h4>Recent Active</h4>
+            <ul id="activeList"></ul>
+            <h4>Recent Waiting</h4>
+            <ul id="waitingList"></ul>
+        </div>
+        <div class="card">
+            <h3>Room: <span id="currentRoom">(none)</span></h3>
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                <button onclick="killSession()" style="background:#d9534f;color:#fff;border:none;padding:6px 10px;border-radius:6px;">Kill Session</button>
+                <button onclick="deleteRoom()" style="background:#6c757d;color:#fff;border:none;padding:6px 10px;border-radius:6px;">Delete Room</button>
+            </div>
+            <div id="messages"></div>
+            <div id="input">
+                <input id="msgInput" placeholder="Type a message as admin..." style="flex:1" />
+                <button onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+    </div>
+  </body>
+</html>
+
+ 

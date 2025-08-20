@@ -7,6 +7,8 @@ class ChatRoom(models.Model):
     user1 = models.CharField(max_length=255, blank=True, null=True)
     user2 = models.CharField(max_length=255, blank=True, null=True)
     active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
 class Message(models.Model):
     room = models.ForeignKey(ChatRoom, on_delete=models.CASCADE, related_name="messages")

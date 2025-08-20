@@ -16,9 +16,12 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
-from chat.views import health_check
+from chat.views import health_check, admin_dashboard, admin_rooms_summary, admin_room_messages
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('health/', health_check, name='health_check'),
+    path('staff/chat/', admin_dashboard, name='admin_dashboard'),
+    path('staff/chat/summary/', admin_rooms_summary, name='admin_rooms_summary'),
+    path('staff/chat/rooms/<uuid:room_uuid>/messages/', admin_room_messages, name='admin_room_messages'),
 ]
