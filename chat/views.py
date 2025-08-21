@@ -16,6 +16,11 @@ def health_check(request):
     })
 
 
+def public_chat(request):
+    """Public chat page that connects to the websocket and matches strangers."""
+    return render(request, "chat/public_chat.html")
+
+
 @staff_member_required
 def admin_dashboard(request):
     return render(request, "chat/admin_dashboard.html")

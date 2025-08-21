@@ -32,10 +32,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def disconnect(self, close_code):
         if self.room_name:
+            # Notify the room and force close the counterpart so both can requeue
             await self.channel_layer.group_send(
                 self.room_name,
                 {"type": "chat_message", "message": "Stranger has disconnected.", "sender_id": None}
             )
+            await self.channel_layer.group_send(self.room_name, {"type": "force_close"})
             await self.deactivate_room(self.room_name)
 
     async def receive(self, text_data):
@@ -130,6 +132,27 @@ class AdminConsumer(AsyncWebsocketConsumer):
                 )
                 await self.channel_layer.group_send(room_id, {"type": "force_close"})
                 await self.send(text_data=json.dumps({"status": "killed", "room_id": room_id}))
+        elif action == "connect_to_waiting":
+            # Admin claims a waiting room so that the user is connected seamlessly
+            room_id = data.get("room_id")
+            if room_id:
+                claimed = await self.claim_waiting_room(room_id, f"admin:{self.user.username}")
+                if claimed:
+                    # Join the group and notify participants like normal connect
+                    if self.room_name:
+                        await self.channel_layer.group_discard(self.room_name, self.channel_name)
+                    self.room_name = room_id
+                    await self.channel_layer.group_add(self.room_name, self.channel_name)
+                    await self.channel_layer.group_send(
+                        self.room_name,
+                        {"type": "chat_message", "message": "You are now connected!", "sender_id": None}
+                    )
+                    # Send history to admin after connecting
+                    history = await self.get_last_messages(room_id)
+                    await self.send(text_data=json.dumps({"status": "connected", "room_id": self.room_name}))
+                    await self.send(text_data=json.dumps({"type": "history", "messages": history}))
+                else:
+                    await self.send(text_data=json.dumps({"status": "failed", "reason": "not_waiting_or_missing"}))
         elif action == "delete_room":
             room_id = data.get("room_id") or self.room_name
             if room_id:
@@ -189,3 +212,15 @@ class AdminConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def delete_all_rooms(self):
         ChatRoom.objects.all().delete()
+
+    @database_sync_to_async
+    def claim_waiting_room(self, room_id: str, admin_label: str) -> bool:
+        try:
+            room = ChatRoom.objects.get(room_id=room_id)
+        except ChatRoom.DoesNotExist:
+            return False
+        if not room.active or room.user2:
+            return False
+        room.user2 = admin_label
+        room.save(update_fields=["user2"])
+        return True

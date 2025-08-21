@@ -5,15 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Chat Admin Dashboard</title>
     <style>
-        body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 20px; }
+        :root {
+            --bg: #0f172a; --panel: #111827; --muted: #94a3b8; --border: rgba(255,255,255,0.08);
+            --accent: #6366f1; --accent-2: #4f46e5; --danger: #ef4444;
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; padding: 20px; background: linear-gradient(180deg, #0b1020, #0f172a); color: #e5e7eb; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+        h1 { margin: 0 0 12px; }
         .grid { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; }
-        .card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; }
-        .stats { display: flex; gap: 12px; }
-        .badge { background: #f4f4f4; padding: 6px 10px; border-radius: 999px; }
-        ul { padding-left: 18px; }
-        li { margin: 6px 0; }
-        #messages { height: 320px; overflow: auto; border: 1px solid #eee; padding: 8px; }
+        .card { background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02)); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+        .stats { display: flex; gap: 12px; margin-bottom: 12px; }
+        .badge { background: rgba(255,255,255,0.06); padding: 6px 10px; border-radius: 999px; color: #cbd5e1; }
+        ul { padding-left: 0; list-style: none; margin: 0; }
+        li { margin: 6px 0; display: flex; align-items: center; gap: 8px; }
+        button { background: transparent; border: 1px solid var(--border); color: #e5e7eb; border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+        button.danger { background: var(--danger); border: none; }
+        #messages { height: 360px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: rgba(2,6,23,0.35); }
         #input { display: flex; gap: 8px; margin-top: 8px; }
+        #msgInput { background: rgba(2,6,23,0.45); border: 1px solid var(--border); color: #e5e7eb; border-radius: 8px; padding: 10px; }
     </style>
     {% csrf_token %}
     <script>
@@ -43,7 +52,7 @@
             (data.recent_waiting || []).forEach(r => {
                 const li = document.createElement("li");
                 const title = `${r.room_id} — waiting`;
-                li.innerHTML = `<button onclick=\"selectRoom('${r.room_id}')\">Open</button> ${title}`;
+                li.innerHTML = `<button onclick=\"connectToWaiting('${r.room_id}')\" style=\"background:#4f46e5;color:#fff;border:none;padding:6px 10px;border-radius:6px;\">Connect</button> <button onclick=\"selectRoom('${r.room_id}')\">Open</button> ${title}`;
                 waitingList.appendChild(li);
             });
         }
@@ -72,6 +81,17 @@
             fetch(`/staff/chat/rooms/${roomId}/messages/`).then(r => r.json()).then(data => {
                 renderMessages(data.messages || []);
             });
+        }
+
+        function connectToWaiting(roomId) {
+            selectedRoomId = roomId;
+            document.getElementById('currentRoom').textContent = roomId;
+            adminSocket.send(JSON.stringify({ action: 'connect_to_waiting', room_id: roomId }));
+            fetch(`/staff/chat/rooms/${roomId}/messages/`).then(r => r.json()).then(data => {
+                renderMessages(data.messages || []);
+            });
+            // refresh lists shortly after attempting to connect
+            setTimeout(fetchSummary, 600);
         }
 
         function renderMessages(messages) {
