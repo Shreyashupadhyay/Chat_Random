@@ -3,7 +3,7 @@ from urllib.parse import parse_qs
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import AnonymousUser
-from .models import ChatRoom, Message
+from .models import ChatRoom, Message, UserProfile
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -11,6 +11,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Unique identifier per connection
         self.user_id = self.channel_name
         self.room_name = None
+        self.user_profile = None
+        self.user_location = None
+        self.is_logged_in = False
 
         # Try to match with an existing waiting room; otherwise create one and wait
         waiting_room = await self.get_waiting_room()
@@ -42,21 +45,41 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data):
         data = json.loads(text_data)
+        
+        # Handle location data
+        if data.get("type") == "location":
+            self.user_location = data.get("location")
+            self.is_logged_in = data.get("isLoggedIn", False)
+            # Update room with location data
+            if self.room_name:
+                await self.update_room_location(self.room_name, self.user_id, self.user_location)
+            return
+        
         msg = data.get("message", "")
         if not msg:
             return
 
         if self.room_name:
-            await self.save_message(self.room_name, self.user_id, msg)
+            # Get sender name for admin display
+            sender_name = await self.get_sender_name(self.user_id, self.is_logged_in)
+            await self.save_message(self.room_name, self.user_id, msg, sender_name)
             await self.channel_layer.group_send(
                 self.room_name,
-                {"type": "chat_message", "message": msg, "sender_id": self.user_id}
+                {
+                    "type": "chat_message", 
+                    "message": msg, 
+                    "sender_id": self.user_id,
+                    "sender_name": sender_name
+                }
             )
 
     async def chat_message(self, event):
         # Only send the message to users who didn't send it
         if event.get("sender_id") != self.user_id:
-            await self.send(text_data=json.dumps({"message": event["message"]}))
+            await self.send(text_data=json.dumps({
+                "message": event["message"],
+                "sender_name": event.get("sender_name")
+            }))
 
     async def force_close(self, event):
         # Close this websocket connection when admin kills the session
@@ -81,12 +104,35 @@ class ChatConsumer(AsyncWebsocketConsumer):
         ChatRoom.objects.filter(room_id=room_id).update(active=False)
 
     @database_sync_to_async
-    def save_message(self, room_id, sender, content):
+    def update_room_location(self, room_id, user_id, location):
         try:
             room = ChatRoom.objects.get(room_id=room_id)
+            if room.user1 == user_id:
+                room.user1_location = location
+            elif room.user2 == user_id:
+                room.user2_location = location
+            room.save(update_fields=["user1_location", "user2_location"])
+        except ChatRoom.DoesNotExist:
+            pass
+
+    @database_sync_to_async
+    def get_sender_name(self, user_id, is_logged_in):
+        if is_logged_in:
+            try:
+                # Try to get username from the user_id if it's a session key
+                # This is a simplified approach - in production you'd want proper user session handling
+                return "User"  # Placeholder - would need proper user session management
+            except:
+                return "Anonymous"
+        return "Anonymous"
+
+    @database_sync_to_async
+    def save_message(self, room_id, sender, content, sender_name=None):
+        try:
+            room = ChatRoom.objects.get(room_id=room_id)
+            Message.objects.create(room=room, sender=sender, content=content)
         except ChatRoom.DoesNotExist:
             return
-        Message.objects.create(room=room, sender=sender, content=content)
 
 
 class AdminConsumer(AsyncWebsocketConsumer):
@@ -197,9 +243,9 @@ class AdminConsumer(AsyncWebsocketConsumer):
     def save_message(self, room_id, sender, content):
         try:
             room = ChatRoom.objects.get(room_id=room_id)
+            Message.objects.create(room=room, sender=sender, content=content)
         except ChatRoom.DoesNotExist:
             return
-        Message.objects.create(room=room, sender=sender, content=content)
 
     @database_sync_to_async
     def delete_room_record(self, room_id):

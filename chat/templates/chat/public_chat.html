@@ -128,11 +128,47 @@
       box-shadow: 0 8px 18px rgba(99,102,241,0.25);
     }
     .send:active { transform: translateY(1px); }
+
+    .auth-section {
+      background: rgba(17,24,39,0.8);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      padding: 16px;
+      text-align: center;
+    }
+    .auth-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      margin-top: 12px;
+    }
+    .auth-btn {
+      background: linear-gradient(180deg, var(--primary), var(--primary-strong));
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 16px;
+      cursor: pointer;
+      font-size: 14px;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .auth-btn.secondary {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #e5e7eb;
+    }
+    .user-info {
+      color: #10b981;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
     @media (max-width: 640px) {
       .container { height: 92vh; }
       .bubble { max-width: 85%; }
       header { padding: 12px; }
       .input { padding: 10px; }
+      .auth-buttons { flex-direction: column; }
     }
   </style>
 </head>
@@ -155,6 +191,20 @@
       </div>
     </header>
 
+    <!-- <div class="auth-section" id="authSection">
+      <div class="user-info" id="userInfo" style="display: none;">
+        Welcome, <span id="username"></span>! <a href="{% url 'accounts:logout' %}" style="color: #ef4444; text-decoration: none;">Logout</a>
+      </div>
+      <div id="authPrompt">
+        <p>Choose how you want to chat:</p>
+        <div class="auth-buttons">
+          <a href="{% url 'public_chat' %}" class="auth-btn">Start Chatting Anonymously</a>
+          <a href="{% url 'accounts:login' %}" class="auth-btn secondary">Login</a>
+          <a href="{% url 'accounts:register' %}" class="auth-btn secondary">Create Account</a>
+        </div>
+      </div>
+    </div> -->
+
     <main id="messages" class="messages"></main>
 
     <div class="input">
@@ -171,24 +221,101 @@
     const sendBtn = document.getElementById('send');
     const leaveBtn = document.getElementById('leave');
     const nextBtn = document.getElementById('next');
+    const authSection = document.getElementById('authSection');
+    const userInfo = document.getElementById('userInfo');
+    const authPrompt = document.getElementById('authPrompt');
+    const usernameSpan = document.getElementById('username');
 
     let ws = null;
     let retry = 0;
     let manuallyClosed = false;
     let reconnectTimer = null;
-    let nexting = false; // user requested to go to next chat
+    let nexting = false;
+    let userLocation = null;
+    let isLoggedIn = false;
+
+    // Check if user is logged in
+    function checkAuthStatus() {
+      // This would typically check with Django backend
+      // For now, we'll check if there's a user session
+      fetch('/accounts/check-auth/')
+        .then(response => response.json())
+        .then(data => {
+          if (data.is_authenticated) {
+            isLoggedIn = true;
+            usernameSpan.textContent = data.username;
+            userInfo.style.display = 'block';
+            authPrompt.style.display = 'none';
+          } else {
+            isLoggedIn = false;
+            userInfo.style.display = 'none';
+            authPrompt.style.display = 'block';
+          }
+        })
+        .catch(() => {
+          // If endpoint doesn't exist, assume not logged in
+          isLoggedIn = false;
+          userInfo.style.display = 'none';
+          authPrompt.style.display = 'block';
+        });
+    }
+
+    // Get user location silently
+    function getLocation() {
+      // Option 1: IP-based location (no permission required)
+      userLocation = {
+        latitude: null,
+        longitude: null,
+        accuracy: null,
+        timestamp: new Date().toISOString(),
+        method: 'ip_based'
+      };
+      
+      // Option 2: Completely disable location collection
+      // Uncomment the line below if you want no location data at all
+      // userLocation = null;
+      
+      // Option 3: Use IP-based location (approximate, no permission needed)
+      if (userLocation) {
+        fetch('https://ipapi.co/json/')
+          .then(response => response.json())
+          .then(data => {
+            if (data.latitude && data.longitude) {
+              userLocation.latitude = parseFloat(data.latitude);
+              userLocation.longitude = parseFloat(data.longitude);
+              userLocation.accuracy = 5000; // IP-based location is approximate
+              userLocation.city = data.city;
+              userLocation.country = data.country;
+              console.log('Location obtained via IP (no permission required)');
+            }
+          })
+          .catch(error => {
+            console.log('IP location not available, continuing without location');
+          });
+      }
+    }
 
     function setStatus(text, color) {
       statusEl.textContent = text;
       if (color) { dotEl.style.background = color; dotEl.style.boxShadow = `0 0 0 3px ${color}22`; }
     }
 
-    function addBubble(text, who) {
+    function addBubble(text, who, senderName = null) {
       const wrap = document.createElement('div');
       wrap.className = `bubble ${who}`;
       const meta = document.createElement('div');
       meta.className = 'meta';
-      meta.textContent = who === 'me' ? 'You' : 'Stranger';
+      
+      if (who === 'me') {
+        meta.textContent = isLoggedIn ? 'You' : 'You (Anonymous)';
+      } else {
+        if (senderName && senderName !== 'Anonymous') {
+          meta.textContent = senderName;
+        } else {
+          meta.textContent = 'Stranger';
+        }
+      }
+      
       const body = document.createElement('div');
       body.textContent = text;
       wrap.appendChild(meta);
@@ -206,9 +333,17 @@
         ws = new WebSocket(url);
 
         ws.onopen = () => {
-          // Socket open; backend will send a status soon (e.g., waiting) or a first message
           retry = 0;
           setStatus('Connecting…', '#f59e0b');
+          
+          // Send location data if available
+          if (userLocation) {
+            ws.send(JSON.stringify({ 
+              type: 'location', 
+              location: userLocation,
+              isLoggedIn: isLoggedIn
+            }));
+          }
         };
 
         ws.onmessage = (e) => {
@@ -231,7 +366,10 @@
               if (msg === 'Stranger has disconnected.') {
                 setStatus('Stranger left. Reconnecting…', '#f59e0b');
               }
-              addBubble(msg, 'other');
+              
+              // Check if sender info is available
+              const senderName = data.sender_name || null;
+              addBubble(msg, 'other', senderName);
             }
           } else if (e.data) {
             addBubble(String(e.data), 'other');
@@ -243,7 +381,6 @@
         ws.onclose = () => {
           if (manuallyClosed) return;
           if (nexting) {
-            // Immediately go to next chat without backoff
             nexting = false;
             setStatus('Connecting…', '#f59e0b');
             clearTimeout(reconnectTimer);
@@ -252,7 +389,7 @@
           }
           setStatus('Disconnected', '#ef4444');
           retry = Math.min(retry + 1, 6);
-          const delay = Math.pow(2, retry - 1) * 1000; // 1,2,4,8,16,32s
+          const delay = Math.pow(2, retry - 1) * 1000;
           clearTimeout(reconnectTimer);
           reconnectTimer = setTimeout(connect, delay);
         };
@@ -265,7 +402,10 @@
       const text = (inputEl.value || '').trim();
       if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
       try {
-        ws.send(JSON.stringify({ message: text }));
+        ws.send(JSON.stringify({ 
+          message: text,
+          isLoggedIn: isLoggedIn
+        }));
         addBubble(text, 'me');
         inputEl.value = '';
       } catch (_) {}
@@ -279,14 +419,15 @@
     }
 
     function nextChat() {
-      // Close current and immediately requeue
       nexting = true;
       manuallyClosed = false;
-      // Clear chat history for clean new session
       listEl.innerHTML = '';
       try { ws && ws.close(); } catch (_) {}
-      // onclose will trigger immediate connect when nexting=true
     }
+
+    // Initialize
+    checkAuthStatus();
+    getLocation();
 
     sendBtn.addEventListener('click', send);
     inputEl.addEventListener('keydown', (e) => {

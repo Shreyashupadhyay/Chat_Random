@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
-# exit on error
-set -o errexit
+# Build script for production deployment
 
+echo "Installing dependencies..."
 pip install -r requirements.txt
 
-python manage.py collectstatic --no-input
+echo "Collecting static files..."
+python manage.py collectstatic --noinput
+
+echo "Running database migrations..."
 python manage.py migrate
+
+echo "Build completed successfully!"

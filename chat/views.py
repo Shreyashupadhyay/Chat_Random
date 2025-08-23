@@ -33,8 +33,38 @@ def admin_rooms_summary(request):
     waiting_qs = ChatRoom.objects.filter(active=True, user2__isnull=True).order_by("-created_at")
     active_rooms = active_qs.count()
     waiting_count = waiting_qs.count()
-    recent_active = list(active_qs.values("id", "room_id", "user1", "user2", "active", "created_at")[:50])
-    recent_waiting = list(waiting_qs.values("id", "room_id", "user1", "user2", "active", "created_at")[:50])
+    
+    # Enhanced room data with location and user info
+    recent_active = []
+    for room in active_qs[:50]:
+        room_data = {
+            "id": room.id,
+            "room_id": str(room.room_id),
+            "user1": room.user1,
+            "user2": room.user2,
+            "user1_location": room.user1_location,
+            "user2_location": room.user2_location,
+            "active": room.active,
+            "created_at": room.created_at.isoformat(),
+            "updated_at": room.updated_at.isoformat()
+        }
+        recent_active.append(room_data)
+    
+    recent_waiting = []
+    for room in waiting_qs[:50]:
+        room_data = {
+            "id": room.id,
+            "room_id": str(room.room_id),
+            "user1": room.user1,
+            "user2": room.user2,
+            "user1_location": room.user1_location,
+            "user2_location": room.user2_location,
+            "active": room.active,
+            "created_at": room.created_at.isoformat(),
+            "updated_at": room.updated_at.isoformat()
+        }
+        recent_waiting.append(room_data)
+    
     return JsonResponse({
         "total_rooms": total_rooms,
         "active_rooms": active_rooms,
@@ -50,11 +80,28 @@ def admin_room_messages(request, room_uuid):
         room = ChatRoom.objects.get(room_id=room_uuid)
     except ChatRoom.DoesNotExist:
         return JsonResponse({"error": "room not found"}, status=404)
+    
     qs = room.messages.order_by("-timestamp")
     paginator = Paginator(qs, 100)
     page = paginator.page(1)
     messages = [
-        {"sender": m.sender, "content": m.content, "timestamp": m.timestamp.isoformat()}
+        {
+            "sender": m.sender, 
+            "content": m.content, 
+            "timestamp": m.timestamp.isoformat(),
+            "sender_profile": m.sender_profile.is_anonymous if m.sender_profile else True
+        }
         for m in page.object_list
     ][::-1]
-    return JsonResponse({"room_id": str(room.room_id), "messages": messages})
+    
+    # Add room location info
+    room_data = {
+        "room_id": str(room.room_id),
+        "user1": room.user1,
+        "user2": room.user2,
+        "user1_location": room.user1_location,
+        "user2_location": room.user2_location,
+        "messages": messages
+    }
+    
+    return JsonResponse(room_data)

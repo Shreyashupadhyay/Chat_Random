@@ -128,8 +128,23 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# Django static files
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Static files
 staticfiles/
+static/
+
+# Media files
+media/
+
+# Environment variables
+.env
+.env.local
+.env.production
 
 # IDE
 .vscode/
@@ -140,3 +155,30 @@ staticfiles/
 # OS
 .DS_Store
 Thumbs.db
+
+# Production
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Database
+*.db
+*.sqlite3
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Flutter/React Native app folders
+/chatapp/
+/chatapp/*

@@ -1,11 +1,17 @@
 
 from django.db import models
+from django.contrib.auth.models import User
+from accounts.models import UserProfile
 import uuid
 
 class ChatRoom(models.Model):
     room_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     user1 = models.CharField(max_length=255, blank=True, null=True)
     user2 = models.CharField(max_length=255, blank=True, null=True)
+    user1_profile = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name="rooms_as_user1")
+    user2_profile = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name="rooms_as_user2")
+    user1_location = models.JSONField(null=True, blank=True)  # Store location data
+    user2_location = models.JSONField(null=True, blank=True)  # Store location data
     active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -13,5 +19,6 @@ class ChatRoom(models.Model):
 class Message(models.Model):
     room = models.ForeignKey(ChatRoom, on_delete=models.CASCADE, related_name="messages")
     sender = models.CharField(max_length=255)
+    sender_profile = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, null=True, blank=True)
     content = models.TextField()
     timestamp = models.DateTimeField(auto_now_add=True)

@@ -7,7 +7,7 @@
     <style>
         :root {
             --bg: #0f172a; --panel: #111827; --muted: #94a3b8; --border: rgba(255,255,255,0.08);
-            --accent: #6366f1; --accent-2: #4f46e5; --danger: #ef4444;
+            --accent: #6366f1; --accent-2: #4f46e5; --danger: #ef4444; --success: #10b981;
         }
         * { box-sizing: border-box; }
         body { margin: 0; padding: 20px; background: linear-gradient(180deg, #0b1020, #0f172a); color: #e5e7eb; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
@@ -23,11 +23,16 @@
         #messages { height: 360px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: rgba(2,6,23,0.35); }
         #input { display: flex; gap: 8px; margin-top: 8px; }
         #msgInput { background: rgba(2,6,23,0.45); border: 1px solid var(--border); color: #e5e7eb; border-radius: 8px; padding: 10px; }
+        .room-info { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+        .location-info { font-size: 12px; color: var(--muted); margin-top: 5px; }
+        .user-badge { background: var(--success); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 5px; }
+        .anonymous-badge { background: var(--muted); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 5px; }
     </style>
     {% csrf_token %}
     <script>
         let adminSocket = null;
         let selectedRoomId = null;
+        let currentRoomData = null;
 
         async function fetchSummary() {
             const res = await fetch("/staff/chat/summary/");
@@ -43,12 +48,14 @@
             const waitingList = document.getElementById("waitingList");
             activeList.innerHTML = "";
             waitingList.innerHTML = "";
+            
             (data.recent_active || []).forEach(r => {
                 const li = document.createElement("li");
                 const title = `${r.room_id} — active`;
                 li.innerHTML = `<button onclick=\"selectRoom('${r.room_id}')\">Open</button> ${title}`;
                 activeList.appendChild(li);
             });
+            
             (data.recent_waiting || []).forEach(r => {
                 const li = document.createElement("li");
                 const title = `${r.room_id} — waiting`;
@@ -79,6 +86,8 @@
             document.getElementById('currentRoom').textContent = roomId;
             adminSocket.send(JSON.stringify({ action: 'subscribe_room', room_id: roomId }));
             fetch(`/staff/chat/rooms/${roomId}/messages/`).then(r => r.json()).then(data => {
+                currentRoomData = data;
+                renderRoomInfo(data);
                 renderMessages(data.messages || []);
             });
         }
@@ -88,22 +97,64 @@
             document.getElementById('currentRoom').textContent = roomId;
             adminSocket.send(JSON.stringify({ action: 'connect_to_waiting', room_id: roomId }));
             fetch(`/staff/chat/rooms/${roomId}/messages/`).then(r => r.json()).then(data => {
+                currentRoomData = data;
+                renderRoomInfo(data);
                 renderMessages(data.messages || []);
             });
             // refresh lists shortly after attempting to connect
             setTimeout(fetchSummary, 600);
         }
 
+        function renderRoomInfo(roomData) {
+            const roomInfoDiv = document.getElementById('roomInfo');
+            if (!roomInfoDiv) return;
+
+            let infoHTML = '<div class="room-info">';
+            infoHTML += '<h4>Room Information</h4>';
+            
+            if (roomData.user1) {
+                const user1Type = roomData.user1.startsWith('admin:') ? 'Admin' : 'User';
+                infoHTML += `<div>User 1: ${roomData.user1} <span class="${user1Type === 'Admin' ? 'user-badge' : 'anonymous-badge'}">${user1Type}</span></div>`;
+                if (roomData.user1_location && roomData.user1_location.latitude) {
+                    if (roomData.user1_location.method === 'ip_based') {
+                        infoHTML += `<div class="location-info">📍 IP Location: ${roomData.user1_location.city || 'Unknown'}, ${roomData.user1_location.country || 'Unknown'} (Approximate)</div>`;
+                    } else {
+                        infoHTML += `<div class="location-info">📍 GPS Location: ${roomData.user1_location.latitude.toFixed(4)}, ${roomData.user1_location.longitude.toFixed(4)} (Accuracy: ${Math.round(roomData.user1_location.accuracy)}m)</div>`;
+                    }
+                }
+            }
+            
+            if (roomData.user2) {
+                const user2Type = roomData.user2.startsWith('admin:') ? 'Admin' : 'User';
+                infoHTML += `<div>User 2: ${roomData.user2} <span class="${user2Type === 'Admin' ? 'user-badge' : 'anonymous-badge'}">${user2Type}</span></div>`;
+                if (roomData.user2_location && roomData.user2_location.latitude) {
+                    if (roomData.user2_location.method === 'ip_based') {
+                        infoHTML += `<div class="location-info">📍 IP Location: ${roomData.user2_location.city || 'Unknown'}, ${roomData.user2_location.country || 'Unknown'} (Approximate)</div>`;
+                    } else {
+                        infoHTML += `<div class="location-info">📍 GPS Location: ${roomData.user2_location.latitude.toFixed(4)}, ${roomData.user2_location.longitude.toFixed(4)} (Accuracy: ${Math.round(roomData.user2_location.accuracy)}m)</div>`;
+                    }
+                }
+            }
+            
+            infoHTML += '</div>';
+            roomInfoDiv.innerHTML = infoHTML;
+        }
+
         function renderMessages(messages) {
             const box = document.getElementById('messages');
             box.innerHTML = '';
-            messages.forEach(m => appendMessage(`${m.timestamp} — ${m.sender}: ${m.content}`));
+            messages.forEach(m => {
+                const senderType = m.sender.startsWith('admin:') ? 'Admin' : (m.sender_profile ? 'User' : 'Anonymous');
+                const badgeClass = m.sender.startsWith('admin:') ? 'user-badge' : (m.sender_profile ? 'user-badge' : 'anonymous-badge');
+                const badgeText = m.sender.startsWith('admin:') ? 'Admin' : (m.sender_profile ? 'User' : 'Anonymous');
+                appendMessage(`${m.timestamp} — ${m.sender} <span class="${badgeClass}">${badgeText}</span>: ${m.content}`);
+            });
         }
 
         function appendMessage(text) {
             const box = document.getElementById('messages');
             const div = document.createElement('div');
-            div.textContent = text;
+            div.innerHTML = text;
             box.appendChild(div);
             box.scrollTop = box.scrollHeight;
         }
@@ -136,6 +187,7 @@
             selectedRoomId = null;
             document.getElementById('currentRoom').textContent = '(none)';
             document.getElementById('messages').innerHTML = '';
+            document.getElementById('roomInfo').innerHTML = '';
             setTimeout(() => { fetchSummary(); }, 800);
         }
 
@@ -147,7 +199,7 @@
     </script>
   </head>
   <body>
-    <h1>Chat Admin</h1>
+    <h1>Chat Admin Dashboard</h1>
     <div class="stats">
         <div class="badge">Total: <strong id="totalRooms">0</strong></div>
         <div class="badge">Active: <strong id="activeRooms">0</strong></div>
@@ -167,6 +219,7 @@
         </div>
         <div class="card">
             <h3>Room: <span id="currentRoom">(none)</span></h3>
+            <div id="roomInfo"></div>
             <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
                 <button onclick="killSession()" style="background:#d9534f;color:#fff;border:none;padding:6px 10px;border-radius:6px;">Kill Session</button>
                 <button onclick="deleteRoom()" style="background:#6c757d;color:#fff;border:none;padding:6px 10px;border-radius:6px;">Delete Room</button>
