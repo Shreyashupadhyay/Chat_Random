@@ -1,0 +1,10 @@
+[33m9a0c9ee[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Remove unused rest_framework dependency and clean up settings
+[33m1f726bd[m Add uvicorn dependency to fix Render deployment error
+[33m473e44e[m Add user authentication, landing page, and production deployment config - Keep existing Redis/PostgreSQL setup intact
+[33mfd6c07e[m Bug fixes
+[33m0c9b05f[m Admin panel added
+[33m14dd893[m Bug fixes
+[33m4084072[m Fix Redis connection error - use in-memory channel layers
+[33m2aca947[m Update deployment configuration
+[33m74d170c[m Prepare for deployment
+[33mf33979c[m Prepare for deployment
